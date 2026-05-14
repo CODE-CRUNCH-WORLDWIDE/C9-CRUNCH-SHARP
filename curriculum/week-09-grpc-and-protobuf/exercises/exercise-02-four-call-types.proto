@@ -1,0 +1,121 @@
+// Exercise 2 — Implement all four gRPC call types on a single service.
+//
+// Goal: Write a .proto declaring a service with one unary, one server-streaming,
+//       one client-streaming, and one bidirectional RPC. Implement the four on
+//       a C# server. Drive the four from a C# client. See
+//       exercise-02-four-call-types.cs for the C# half.
+//
+// Estimated time: 90 minutes.
+//
+// HOW TO USE THIS FILE
+//
+// 1. Scaffold a server project and a client project:
+//
+//      mkdir Ex02-FourCallTypes && cd Ex02-FourCallTypes
+//      dotnet new grpc -n Ex02.Server -o src/Ex02.Server --framework net8.0
+//      dotnet new console -n Ex02.Client -o src/Ex02.Client --framework net8.0
+//
+//    `dotnet new grpc` scaffolds a ready-made Greeter sample. Delete its
+//    Protos/greet.proto and Services/GreeterService.cs.
+//
+// 2. Place THIS file at src/Ex02.Server/Protos/numbers.proto and at
+//    src/Ex02.Client/Protos/numbers.proto (or link from a shared location).
+//
+//    In Ex02.Server.csproj:
+//      <ItemGroup>
+//        <Protobuf Include="Protos\numbers.proto" GrpcServices="Server" />
+//      </ItemGroup>
+//
+//    In Ex02.Client.csproj:
+//      <ItemGroup>
+//        <PackageReference Include="Grpc.Net.Client" Version="2.60.0" />
+//        <PackageReference Include="Grpc.Tools" Version="2.60.0" PrivateAssets="All" />
+//        <PackageReference Include="Google.Protobuf" Version="3.25.0" />
+//      </ItemGroup>
+//      <ItemGroup>
+//        <Protobuf Include="..\Ex02.Server\Protos\numbers.proto"
+//                  GrpcServices="Client"
+//                  Link="Protos\numbers.proto" />
+//      </ItemGroup>
+//
+// 3. Implement the server (see exercise-02-four-call-types.cs).
+//
+// 4. dotnet run --project src/Ex02.Server     (in one terminal)
+//    dotnet run --project src/Ex02.Client     (in another)
+//
+// ACCEPTANCE CRITERIA
+//
+//   [ ] The proto declares package crunch.numbers.v1 with csharp_namespace set.
+//   [ ] Four RPCs are declared, one per call type, with explicit names below.
+//   [ ] The server is wired into Program.cs with builder.Services.AddGrpc()
+//       and app.MapGrpcService<NumberService>().
+//   [ ] The client uses GrpcChannel.ForAddress on the server's HTTPS endpoint.
+//   [ ] Each call type prints the expected output (see the .cs file).
+//   [ ] dotnet build succeeds on both projects with 0 warnings, 0 errors.
+//
+// REFLECTION QUESTIONS — answer in results-ex02.md after running:
+//
+// 1. Which call type opens an HTTP/2 stream that the server may keep open
+//    for the longest time? Why is server-streaming the right shape for a
+//    "subscribe to events" feed, rather than polling unary RPCs?
+// 2. In the client-streaming RPC, what happens if the client never calls
+//    RequestStream.CompleteAsync()? What status code surfaces if the deadline
+//    expires first?
+// 3. In the bidirectional RPC, who decides when each side stops? Could a
+//    deadlock occur if both sides only read?
+
+syntax = "proto3";
+
+package crunch.numbers.v1;
+
+option csharp_namespace = "Crunch.Numbers.V1";
+
+// --- Messages ---
+
+message SquareRequest {
+  int64 input = 1;
+}
+
+message SquareResponse {
+  int64 squared = 1;
+}
+
+message CountUpRequest {
+  int32 from = 1;
+  int32 to = 2;
+  int32 step = 3;       // step >= 1 expected.
+}
+
+message NumberMessage {
+  int64 value = 1;
+}
+
+message SumResponse {
+  int64 sum = 1;
+  int32 count = 2;
+}
+
+message EchoRequest {
+  string text = 1;
+}
+
+message EchoResponse {
+  string text = 1;
+  int32 sequence = 2;   // monotonic counter set by the server.
+}
+
+// --- Service ---
+
+service NumberService {
+  // Unary: square a number.
+  rpc Square(SquareRequest) returns (SquareResponse);
+
+  // Server-streaming: yield from..to..step as a stream.
+  rpc CountUp(CountUpRequest) returns (stream NumberMessage);
+
+  // Client-streaming: sum a stream of numbers, return the total.
+  rpc Sum(stream NumberMessage) returns (SumResponse);
+
+  // Bidirectional: echo each input with a server-assigned sequence number.
+  rpc Echo(stream EchoRequest) returns (stream EchoResponse);
+}

@@ -1,0 +1,69 @@
+// Exercise 3 — Deadlines, cancellation propagation, and a logging interceptor.
+//
+// Goal: Build a tiny "slow service" with one unary RPC whose work time is a
+//       client-provided parameter, attach a server logging interceptor, attach
+//       a client correlation-id interceptor, and prove three behaviours:
+//
+//         (a) A call with a deadline shorter than the work time fails with
+//             StatusCode.DeadlineExceeded.
+//         (b) The server's logging interceptor records both successes and
+//             deadline-exceeded failures with the elapsed time and the
+//             correlation id from the request metadata.
+//         (c) The client's correlation-id interceptor attaches a fresh id on
+//             every call that does not already have one.
+//
+// Estimated time: 90 minutes.
+//
+// HOW TO USE THIS FILE
+//
+// 1. Scaffold:
+//      mkdir Ex03-Deadlines && cd Ex03-Deadlines
+//      dotnet new grpc -n Ex03.Server -o src/Ex03.Server --framework net8.0
+//      dotnet new console -n Ex03.Client -o src/Ex03.Client --framework net8.0
+//
+// 2. Place this file at src/Ex03.Server/Protos/slow.proto and link from
+//    src/Ex03.Client (as in Exercise 2).
+//
+// 3. See exercise-03-deadlines-and-interceptors.cs for the server and client
+//    code.
+//
+// ACCEPTANCE CRITERIA
+//
+//   [ ] The server logs every call with method, status code, elapsed ms, and
+//       the x-correlation-id metadata value.
+//   [ ] The client interceptor adds x-correlation-id when missing.
+//   [ ] A 300 ms deadline against a 1000 ms work-time call fails with
+//       StatusCode.DeadlineExceeded. The server's interceptor logs the
+//       failure with the elapsed time roughly equal to the deadline.
+//   [ ] A 2000 ms deadline against the same 1000 ms call succeeds.
+//   [ ] dotnet build succeeds with 0 warnings, 0 errors on both projects.
+//
+// REFLECTION QUESTIONS — answer in results-ex03.md after running:
+//
+// 1. Why does the deadline-exceeded path log elapsed ~= deadline (300 ms),
+//    even though the server's work is sleeping 1000 ms?
+// 2. If the server forgot to pass context.CancellationToken into the Task.Delay,
+//    what would the log show?
+// 3. What status code would the server have to throw to indicate "client
+//    asked for too long a delay" (say, > 5 seconds)? Defend the choice.
+
+syntax = "proto3";
+
+package crunch.slow.v1;
+
+option csharp_namespace = "Crunch.Slow.V1";
+
+message SlowRequest {
+  int32 work_ms = 1;        // requested work duration; server delays for this long.
+  string label = 2;         // a human-readable label, echoed in the response.
+}
+
+message SlowResponse {
+  string label = 1;
+  int32 work_ms_actual = 2;  // how long the server actually worked (may be < requested if cancelled).
+}
+
+service SlowService {
+  // Unary RPC. Delays for work_ms then returns. Respects cancellation.
+  rpc DoWork(SlowRequest) returns (SlowResponse);
+}

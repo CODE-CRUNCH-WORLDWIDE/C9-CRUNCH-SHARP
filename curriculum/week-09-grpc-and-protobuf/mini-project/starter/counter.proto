@@ -1,0 +1,57 @@
+// Crunch Counter — mini-project schema.
+//
+// Place at protos/counter.proto in the solution root. Link into:
+//   - src/CrunchCounter.Server/CrunchCounter.Server.csproj (GrpcServices="Server")
+//   - src/CrunchCounter.Client/CrunchCounter.Client.csproj (GrpcServices="Client")
+//   - tests/CrunchCounter.Tests/CrunchCounter.Tests.csproj (GrpcServices="Client")
+//   - clients/python/counter.proto (symlink or copy)
+
+syntax = "proto3";
+
+package crunch.counter.v1;
+option csharp_namespace = "Crunch.Counter.V1";
+
+import "google/protobuf/timestamp.proto";
+
+// ---- Messages ----
+
+// One increment applied to a counter.
+message IncrementRequest {
+  string counter_name = 1;
+  int64 delta = 2;
+}
+
+message IncrementResponse {
+  string counter_name = 1;
+  int64 new_value = 2;
+  google.protobuf.Timestamp applied_at = 3;
+}
+
+message SubscribeRequest {
+  string counter_name = 1;
+}
+
+message CounterEvent {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_INCREMENT = 1;       // a delta was applied
+    KIND_SNAPSHOT = 2;        // initial state on subscribe
+  }
+  Kind kind = 1;
+  string counter_name = 2;
+  int64 value = 3;
+  google.protobuf.Timestamp at = 4;
+}
+
+// ---- Service ----
+
+service Counter {
+  // Unary. Atomically applies delta to counter_name.
+  // Errors:
+  //   InvalidArgument  — counter_name empty/too long, or delta = 0.
+  rpc Increment(IncrementRequest) returns (IncrementResponse);
+
+  // Server-streaming. Emits SNAPSHOT immediately, then INCREMENT per applied
+  // delta. Caller is expected to close when done.
+  rpc Subscribe(SubscribeRequest) returns (stream CounterEvent);
+}

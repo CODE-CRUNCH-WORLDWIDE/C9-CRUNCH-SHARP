@@ -1,0 +1,156 @@
+// Exercise 1 — Design a proto from a real-world spec.
+//
+// Goal: Write a single .proto file that models a small "shipment tracking"
+//       domain. Cover proto3 messages, enums, oneof, repeated, well-known
+//       types, optional, and reserved. Generate C# from it and prove the
+//       round-trip in exercise-01-design-a-proto.cs.
+//
+// Estimated time: 60 minutes.
+//
+// HOW TO USE THIS FILE
+//
+// 1. Scaffold a fresh class library:
+//
+//      mkdir Ex01-DesignAProto && cd Ex01-DesignAProto
+//      dotnet new classlib -n Ex01 -o src/Ex01 --framework net8.0
+//      cd src/Ex01
+//      mkdir Protos
+//
+//    Move this file to src/Ex01/Protos/shipment.proto.
+//
+// 2. Edit src/Ex01/Ex01.csproj. Add:
+//
+//      <ItemGroup>
+//        <PackageReference Include="Google.Protobuf" Version="3.25.0" />
+//        <PackageReference Include="Grpc.Tools" Version="2.60.0" PrivateAssets="All" />
+//      </ItemGroup>
+//      <ItemGroup>
+//        <Protobuf Include="Protos\shipment.proto" GrpcServices="None" />
+//      </ItemGroup>
+//
+//    GrpcServices="None" is intentional for this exercise — we are exercising
+//    the message types, not the service plumbing. Exercise 2 adds the service.
+//
+// 3. Fill in the TODOs below, then dotnet build.
+//
+// 4. Replace the auto-generated Class1.cs with the contents of
+//    exercise-01-design-a-proto.cs, and dotnet run -c Release.
+//
+// ACCEPTANCE CRITERIA
+//
+//   [ ] syntax = "proto3" is on the first non-comment line.
+//   [ ] package = "crunch.shipment.v1" with a version suffix.
+//   [ ] csharp_namespace = "Crunch.Shipment.V1" is set.
+//   [ ] Three messages are declared: Shipment, ShipmentEvent, GetShipmentResponse.
+//   [ ] One enum: ShipmentStatus with XXX_UNSPECIFIED at 0.
+//   [ ] A oneof modelling the address kind (residential vs commercial vs locker).
+//   [ ] A repeated field for events.
+//   [ ] Use of google.protobuf.Timestamp for the event timestamps.
+//   [ ] Use of google.protobuf.Duration for the SLA window.
+//   [ ] An optional field where presence matters.
+//   [ ] At least one reserved declaration demonstrating schema-evolution discipline.
+//   [ ] dotnet build succeeds with 0 warnings, 0 errors.
+//
+// REFLECTION QUESTIONS — answer in results-ex01.md after running:
+//
+// 1. Why is the zero value of ShipmentStatus named SHIPMENT_STATUS_UNSPECIFIED?
+// 2. What happens on the wire if a sender writes optional carrier = "" vs leaves it unset?
+// 3. Predict the byte size of a Shipment with id = "S0001", status = IN_TRANSIT,
+//    one event with kind = PICKED_UP at the current time. Verify with .CalculateSize().
+
+syntax = "proto3";
+
+package crunch.shipment.v1;
+
+option csharp_namespace = "Crunch.Shipment.V1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+// TODO-1: declare a ShipmentStatus enum with at least five values.
+// Must include SHIPMENT_STATUS_UNSPECIFIED = 0.
+// Suggested values: UNSPECIFIED, CREATED, PICKED_UP, IN_TRANSIT, OUT_FOR_DELIVERY, DELIVERED, RETURNED.
+//
+// Naming rule: SCREAMING_SNAKE_CASE, prefixed with SHIPMENT_STATUS_.
+enum ShipmentStatus {
+  SHIPMENT_STATUS_UNSPECIFIED = 0;
+  // TODO: add the rest.
+}
+
+// A residential delivery destination.
+message ResidentialAddress {
+  string street = 1;
+  string city = 2;
+  string region = 3;
+  string postal_code = 4;
+  string country_code = 5;  // ISO 3166-1 alpha-2.
+  // Optional buzzer code where the building has one; presence matters.
+  // TODO-2: declare this field with the "optional" keyword.
+}
+
+// A commercial delivery destination.
+message CommercialAddress {
+  string company_name = 1;
+  string street = 2;
+  string city = 3;
+  string region = 4;
+  string postal_code = 5;
+  string country_code = 6;
+  string suite_number = 7;
+}
+
+// A parcel-locker destination.
+message LockerAddress {
+  string locker_id = 1;        // operator-assigned id.
+  string carrier_code = 2;     // e.g. "amzn", "ups".
+  string region = 3;
+}
+
+// A single tracking event in a shipment's history.
+message ShipmentEvent {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_CREATED = 1;
+    KIND_PICKED_UP = 2;
+    KIND_SCANNED = 3;
+    KIND_OUT_FOR_DELIVERY = 4;
+    KIND_DELIVERED = 5;
+    KIND_EXCEPTION = 6;
+  }
+
+  Kind kind = 1;
+  google.protobuf.Timestamp occurred_at = 2;
+  string facility_code = 3;
+  string notes = 4;
+}
+
+// The main aggregate.
+message Shipment {
+  string id = 1;                                  // Operator-assigned identifier.
+  ShipmentStatus status = 2;
+
+  // The destination address; exactly one of the three forms is set.
+  // TODO-3: declare a oneof "destination" containing fields for each of
+  //         ResidentialAddress, CommercialAddress, LockerAddress.
+  //         Field numbers: 3, 4, 5.
+
+  // The list of historical events.
+  // TODO-4: declare a "repeated ShipmentEvent events = 6;" field.
+
+  // The SLA window for delivery — typically 24h-72h.
+  google.protobuf.Duration sla_window = 7;
+
+  // Optional carrier override. Presence matters: an empty string is a
+  // distinct semantic from "field absent."
+  // TODO-5: declare "optional string carrier = 8;".
+
+  // A reserved field number from a removed v0 field. See the comment.
+  // Demonstrates schema-evolution discipline — never reuse field numbers.
+  reserved 9;
+  reserved "deprecated_legacy_field";
+}
+
+// The response shape for a GetShipment unary RPC. Exercise 2 will use it.
+message GetShipmentResponse {
+  Shipment shipment = 1;
+}
